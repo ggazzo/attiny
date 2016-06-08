@@ -16,39 +16,56 @@
 #include <avr/sleep.h>
 #include <avr/wdt.h>
 
+#include <Wire.h>
+
 #ifndef cbi
 #define cbi(sfr, bit) (_SFR_BYTE(sfr) &= ~_BV(bit))
 #endif
 #ifndef sbi
 #define sbi(sfr, bit) (_SFR_BYTE(sfr) |= _BV(bit))
 #endif
-
+int acelX,acelY,acelZ,temperatura,giroX,giroY,giroZ;
 int pinLed = 0;
-volatile boolean f_wdt = 1;
-
+int f_wdt = 30*60/8;
+const int MPU=0x68;
 void setup(){
   pinMode(pinLed,OUTPUT);
-  setup_watchdog(9); // approximately 4 seconds sleep
+  setup_watchdog(9); // approximately 8 seconds sleep
+  Wire.begin();                 //inicia I2C
+  Wire.beginTransmission(MPU);  //Inicia transmissão para o endereço do MPU
+  Wire.write(0x6B);  
+  Wire.write(0); 
+  Wire.endTransmission(true);
 }
 
 void loop(){
-  if (f_wdt==1) {  // wait for timed out watchdog / flag is set when a watchdog timeout occurs
-    f_wdt=0;       // reset flag
+  
 
-    digitalWrite(pinLed,HIGH);  // let led blink
-    digitalWrite(1,HIGH);  // let led blink
-    delay(1000);
-    digitalWrite(pinLed,LOW);
-    digitalWrite(1,LOW);
+    Wire.beginTransmission(MPU);      //transmite
+    Wire.write(0x3B);                 // Endereço 0x3B (ACCEL_XOUT_H)
+    Wire.endTransmission(false);     //Finaliza transmissão
+    
+    Wire.requestFrom(MPU,14);   //requisita bytes
+     
+    //Armazena o valor dos sensores nas variaveis correspondentes
+    acelX=Wire.read()<<8|Wire.read();  //0x3B (ACCEL_XOUT_H) & 0x3C (ACCEL_XOUT_L)     
+    acelY=Wire.read()<<8|Wire.read();  //0x3D (ACCEL_YOUT_H) & 0x3E (ACCEL_YOUT_L)
+    acelZ=Wire.read()<<8|Wire.read();  //0x3F (ACCEL_ZOUT_H) & 0x40 (ACCEL_ZOUT_L)
+    temperatura=Wire.read()<<8|Wire.read();  //0x41 (TEMP_OUT_H) & 0x42 (TEMP_OUT_L)
+    giroX=Wire.read()<<8|Wire.read();  //0x43 (GYRO_XOUT_H) & 0x44 (GYRO_XOUT_L)
+    giroY=Wire.read()<<8|Wire.read();  //0x45 (GYRO_YOUT_H) & 0x46 (GYRO_YOUT_L)
+    giroZ=Wire.read()<<8|Wire.read();  //0x47 (GYRO_ZOUT_H) & 0x48 (GYRO_ZOUT_L)
 
-    pinMode(pinLed,INPUT); // set all used port to intput to save power
-    pinMode(1,INPUT); // set all used port to intput to save power
-    system_sleep();
-    pinMode(pinLed,OUTPUT); // set all ports into state before sleep
-    pinMode(1,OUTPUT); // set all ports into state before sleep
-  }
+    ds();
 }
 
+
+inline void ds (){
+  while (f_wdt < 224) {
+    system_sleep();    
+  }
+  f_wdt = 0;
+}
 // set system into the sleep state 
 // system wakes up when wtchdog is timed out
 void system_sleep() {
@@ -85,5 +102,5 @@ void setup_watchdog(int ii) {
   
 // Watchdog Interrupt Service / is executed when watchdog timed out
 ISR(WDT_vect) {
-  f_wdt=1;  // set global flag
+  f_wdt++;  // set global flag
 }
