@@ -23,7 +23,7 @@ char f_wdt = 0;
   sleep_disable();\
   sbi(ADCSRA,ADEN);
 
-#define sleep(); while (f_wdt < 224) {\
+#define sleep(); while (f_wdt < 1) {\
     system_sleep();\
   }\
   f_wdt = 0;

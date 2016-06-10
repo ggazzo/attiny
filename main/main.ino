@@ -1,14 +1,18 @@
 #include "lowp.h"
 #include <Wire.h>
 
-#include <AsmTinySerial.h>  
+// #define Wire TinyWireM
+#define SERIAL_BAUDRATE 115200
+#include "AsmTinySerial.h"
 
+#define CLR(x,y) (x&=(~(1<<y)))
 
+#define SET(x,y) (x|=(1<<y))
 
 
 const int MPU=0x68;
 
-//#define PIN_DEBUG 1
+#define PIN_DEBUG 1
 
 /* IMU Data */
 int accX, accY, accZ;
@@ -19,7 +23,6 @@ float gyroXrate, gyroYrate;
 
 
 uint32_t timer, dt;
-
 
 float roll, pitch;
 float roll_final, pitch_final;
@@ -58,11 +61,22 @@ void first(){
   pitch = 0.93 * (pitch + gyroYrate * dt) + 0.07 * pitch;
 
 
-
+void pulse(){
+    #ifdef PIN_DEBUG
+    delay(500);
+    SET(PORTB,PIN_DEBUG);
+    delay(500);
+    CLR(PORTB, PIN_DEBUG) ;
+    #endif
+}
 void setup(){
 
-  SerialInit( PB3  , 115200 );
+  // SerialInit( 115200 );
   setup_sleep();
+  #ifdef PIN_DEBUG
+  SET(DDRB, PIN_DEBUG);
+  // pinMode(PIN_DEBUG, OUTPUT);
+  #endif
   // Wire.begin();                 //inicia I2C
   // Wire.beginTransmission(MPU);  //Inicia transmissão para o endereço do MPU
   // Wire.write(0x6B);
@@ -86,13 +100,18 @@ char buffer[40];
 void loop(){
     first ();
     char a= 5;
+    roll_final = roll =  roll_new;
+    pitch_final = pitch =  pitch_new;
     do {
-      roll_final = roll =  roll_new;
-      pitch_final = pitch =  pitch_new;
       request_data();
+      roll_final = (roll + roll_final)/2 ;
+      pitch_final = (pitch + pitch_final)/2;
     } while(--a > 0);
-    
+
     sprintf(buffer, "%f %f \n",roll_final ,pitch_final);
     SerialTx( buffer );
+    #ifdef PIN_DEBUG
+        pulse();
+    #endif
     sleep();
 }
