@@ -1,10 +1,9 @@
 #include "lowp.h"
 #include <Wire.h>
 
+#include <AsmTinySerial.h>  
 
-#include <SoftSerial.h>
 
-SoftSerial mySerial(2, 3);
 
 
 const int MPU=0x68;
@@ -59,11 +58,10 @@ void first(){
   pitch = 0.93 * (pitch + gyroYrate * dt) + 0.07 * pitch;
 
 
-/* Some example here */
 
 void setup(){
 
-  mySerial.begin(4800);
+  SerialInit( PB3  , 115200 );
   setup_sleep();
   // Wire.begin();                 //inicia I2C
   // Wire.beginTransmission(MPU);  //Inicia transmissão para o endereço do MPU
@@ -77,9 +75,6 @@ void setup(){
   gyroXrate = gyroX / 131.0;\
   gyroYrate = gyroY / 131.0;\
   complementary();
-//complementary(&roll,&pitch,&roll_new, &gyroXrate, &gyroYrate);
-
-//complementary(&pitch,&roll,&pitch_new, &gyroYrate, &gyroXrate);\
 
 
 void  get_roll_pitch() {
@@ -89,12 +84,12 @@ void  get_roll_pitch() {
 
 void loop(){
     first ();
+    char a= 5;
     do {
       roll_final = roll =  roll_new;
       pitch_final = pitch =  pitch_new;
       request_data();
     } while(--a > 0);
-    mySerial.print(roll_final);
-    mySerial.print(pitch_final);
+    SerialTx( "Init\n" );
     sleep();
 }
