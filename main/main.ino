@@ -44,7 +44,7 @@ inline void read_data() {
   Wire.beginTransmission(MPU);
   Wire.write(0x3B);
   Wire.endTransmission();
-  Wire.requestFrom(MPU,DATA_LENGTH );
+  Wire.requestFrom(MPU,DATA_LENGTH,(uint8_t*)&data_mpu);
 }
 
 void first() {
@@ -72,6 +72,21 @@ void pulse() {
   CLR(PORTB, PIN_DEBUG) ;
 #endif
 }
+
+#define request_data(void);  \
+  first ();\
+  gyroXrate = gyroX / 131.0;\
+  gyroYrate = gyroY / 131.0;\
+  complementary();
+
+
+void  get_roll_pitch() {
+  roll_new  = atan2(accY, accZ) * RAD_TO_DEG;
+  pitch_new = atan(-accX / sqrt(accY * accY + accZ * accZ)) * RAD_TO_DEG;
+}
+
+
+
 void setup() {
 
 
@@ -86,28 +101,19 @@ void setup() {
   // Wire.endTransmission(true);
 }
 
-#define request_data(void);  first ();\
-  gyroXrate = gyroX / 131.0;\
-  gyroYrate = gyroY / 131.0;\
-  complementary();
-
-
-void  get_roll_pitch() {
-  roll_new  = atan2(accY, accZ) * RAD_TO_DEG;
-  pitch_new = atan(-accX / sqrt(accY * accY + accZ * accZ)) * RAD_TO_DEG;
-}
 
 char buffer[40];
 void loop() {
   first ();
-  char a = 5;
+  
   roll_final = roll =  roll_new;
   pitch_final = pitch =  pitch_new;
-  do {
+  
+  for(char a = 5 ; a > 0 ; a--) {
     request_data();
     roll_final = (roll + roll_final) / 2 ;
     pitch_final = (pitch + pitch_final) / 2;
-  } while (--a > 0);
+  }
 
   sprintf(buffer, "%f %f \n", roll_final , pitch_final);
   SerialTx( buffer );
