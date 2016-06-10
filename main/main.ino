@@ -82,6 +82,7 @@ void  get_roll_pitch() {
   pitch_new = atan(-accX / sqrt(accY * accY + accZ * accZ)) * RAD_TO_DEG;
 }
 
+char buffer[40];
 void loop(){
     first ();
     char a= 5;
@@ -90,6 +91,8 @@ void loop(){
       pitch_final = pitch =  pitch_new;
       request_data();
     } while(--a > 0);
-    SerialTx( "Init\n" );
+    
+    sprintf(buffer, "%f %f \n",roll_final ,pitch_final);
+    SerialTx( buffer );
     sleep();
 }
