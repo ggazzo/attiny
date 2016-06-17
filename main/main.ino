@@ -2,6 +2,7 @@
 #define CLR(x,y) (x&=(~(1<<y)))
 #define SET(x,y) (x|=(1<<y))
 #define PIN_DEBUG 1
+#define PIN_INTERRUPT 4
 #define DATA_LENGTH 14
 
 
@@ -16,6 +17,8 @@
 
 
 void setup() {
+  CLR(DDRB, PIN_INTERRUPT);
+  SET(PORTB, PIN_INTERRUPT);
 #ifdef PIN_DEBUG
   SET(DDRB, PIN_DEBUG);
 #endif
@@ -27,11 +30,9 @@ void loop() {
   sleep();
 
   MPU.start();
-
   for(char a = 5 ; a > 0 ; a--) {
     MPU.update();
   }
-
   sprintf(buffer, "%f %f \n", MPU.roll , MPU.pitch);
   SerialTx( buffer );
 #ifdef PIN_DEBUG
