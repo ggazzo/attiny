@@ -81,10 +81,7 @@ for(let i = 0; 1000*10000; i++){
   evaluate();
   if (i % 1000 == 0){ console.log("epoca - ",pop[0].erro,i);
   console.log(`https://www.google.com.br/#q=`+encodeURIComponent(`plot ${pop[0].a}*x^4 + ${pop[0].b}*x^3 + ${pop[0].c}*x^2 + ${pop[0].d}*x + ${pop[0].e}`));}
-  mutate();
-  if(pop[0].erro < 1){
-    break;
-  }
+  mutate();  
 }
 
 
