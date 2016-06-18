@@ -5,7 +5,7 @@
 #define CLR(x,y) (x&=(~(1<<y)))
 #define SET(x,y) (x|=(1<<y))
 #define PIN_DEBUG 1
-
+#define PIN_INTERRUPT 5
 
 void pulse() {
 #ifdef PIN_DEBUG
@@ -13,11 +13,12 @@ void pulse() {
   SET(PORTB, PIN_DEBUG);
   delay(500);
   CLR(PORTB, PIN_DEBUG) ;
-  SerialTx("hello\n");
 #endif
 }
 
 void setup() {
+  CLR(DDRB, PIN_INTERRUPT);
+  SET(PORTB, PIN_INTERRUPT) ;
 #ifdef PIN_DEBUG
   SET(DDRB, PIN_DEBUG);
 #endif
@@ -26,11 +27,9 @@ void setup() {
 
 
 void loop() {
-    SerialTx("hello\n");
-
+  SerialTx("hello\n");
 #ifdef PIN_DEBUG
   pulse();
 #endif
-
-    sleep();
+  sleep();
 }
