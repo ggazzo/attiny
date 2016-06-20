@@ -8,6 +8,7 @@
 #define PIN_INTERRUPT 5
 
 void pulse() {
+    // internal pull-up
 #ifdef PIN_DEBUG
   delay(500);
   SET(PORTB, PIN_DEBUG);
@@ -19,6 +20,7 @@ void pulse() {
 void setup() {
   CLR(DDRB, PIN_INTERRUPT);
   SET(PORTB, PIN_INTERRUPT) ;
+
 #ifdef PIN_DEBUG
   SET(DDRB, PIN_DEBUG);
 #endif
