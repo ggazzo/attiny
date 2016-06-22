@@ -1,3 +1,4 @@
+#include "EEPROM.h"
 #include "I2Cdev.h"
 #include "MPU6050_6Axis_MotionApps20.h"
 #include "Wire.h"
@@ -5,7 +6,7 @@
 #include "CmdCallback.h"
 #include "CmdParser.h"
 
-CmdCallback<4> cmdCallback;
+CmdCallback<5> cmdCallback;
 
 ///////////////////////////////////   CONFIGURATION   /////////////////////////////
 //Change this 3 variables if you want to fine tune the skecth to your needs.
@@ -13,9 +14,7 @@ int buffersize=1000;     //Amount of readings used to average, make it higher to
 int acel_deadzone=8;     //Acelerometer error allowed, make it lower to get more precision, but sketch may not converge  (default:8)
 int giro_deadzone=1;     //Giro error allowed, make it lower to get more precision, but sketch may not converge  (default:1)
 
-int16_t ax, ay, az,gx, gy, gz;
 
-int ax_offset,ay_offset,az_offset,gx_offset,gy_offset,gz_offset;
 
 MPU6050 mpu;
 #define LED_PIN 13      // (Galileo/Arduino is 13)
@@ -33,6 +32,7 @@ VectorFloat gravity;    // [x, y, z]            gravity vector
 Quaternion q;           // [w, x, y, z]         quaternion container
 float euler[3];         // [psi, theta, phi]    Euler angle container
 float ypr[3];           // [yaw, pitch, roll]   yaw/pitch/roll container and gravity vector
+float buffer_ypr[3];           // [yaw, pitch, roll]   yaw/pitch/roll container and gravity vector
 
 // ================================================================
 // ===               INTERRUPT DETECTION ROUTINE                ===
@@ -56,24 +56,34 @@ void setup() {
 
     Serial.begin(115200);
     while (!Serial);
-    Serial.println(F("Device started...\n"));
-    Serial.println(F("Initializing I2C devices...\n"));
-
-
+    Serial.println(F("Device started..."));
     cmdCallback.addCmd("<calibration>", &Calibration);
     cmdCallback.addCmd("<mpu_initialize>", &mpu_initialize);
     cmdCallback.addCmd("<read_ypr>", &read_ypr);
     cmdCallback.addCmd("<save_offsets>", &save_offsets);
+    cmdCallback.addCmd("<read_offsets>", &read_offsets);
     // configure LED for output
     pinMode(LED_PIN, OUTPUT);
 }
 
+void loop() {
+    // blink LED to indicate activity
+    blinkState = !blinkState;
+    digitalWrite(LED_PIN, blinkState);
+    delay(100);
+}
+
+void serialEvent() {
+  CmdBuffer<32> myBuffer;
+  CmdParser     myParser;
+  cmdCallback.loopCmdProcessing(&myParser, &myBuffer, &Serial);
+}
 
 void mpu_initialize(CmdParser *myParser) {
   mpu.initialize();
   Serial.print(F("Testing device connections..."));
   Serial.print(F("MPU6050 connection "));
-  if(mpu.testConnection()){
+  if(!mpu.testConnection()){
       Serial.println(F("failed"));
       return;
   }
@@ -118,18 +128,50 @@ void mpu_initialize(CmdParser *myParser) {
       Serial.println(F(")"));
   }
 
+
+
 }
+
+
+#define CONFIG_VERSION "ls1"
+
+struct StoreStruct {
+  // This is for mere detection if they are your settings
+  char version[4];
+  int ax_offset,ay_offset,az_offset,gx_offset,gy_offset,gz_offset;
+} storage = {
+  CONFIG_VERSION,
+  -1436,
+  1083,
+  1070,
+  53,
+  7,
+  0
+};
+
+#define CONFIG_START 32
 void save_offsets(CmdParser *myParser){
-  //@TODO save from eeprom
+  for (unsigned int t=0; t<sizeof(storage); t++)
+    EEPROM.write(CONFIG_START + t, *((char*)&storage + t));
   print_offset();
 }
 void _read_offsets(){
-  //@TODO read from eeprom
+  if (EEPROM.read(CONFIG_START + 0) == CONFIG_VERSION[0] &&
+      EEPROM.read(CONFIG_START + 1) == CONFIG_VERSION[1] &&
+      EEPROM.read(CONFIG_START + 2) == CONFIG_VERSION[2]){
+  for (unsigned int t=0; t<sizeof(storage); t++)
+    *((char*)&storage + t) = EEPROM.read(CONFIG_START + t);
+        
+    }else {
+      Serial.println(F("No valid memory"));
+    }
   print_offset();
-  mpu.setXGyroOffset(220);
-  mpu.setYGyroOffset(76);
-  mpu.setZGyroOffset(-85);
-  mpu.setZAccelOffset(1788);
+  mpu.setXGyroOffset(storage.gx_offset);
+  mpu.setYGyroOffset(storage.gy_offset);
+  mpu.setZGyroOffset(storage.gz_offset);
+  mpu.setXAccelOffset(storage.ax_offset);
+  mpu.setYAccelOffset(storage.ay_offset);
+  mpu.setZAccelOffset(storage.az_offset);
 }
 void read_offsets(CmdParser *myParser){
   _read_offsets();
@@ -139,20 +181,9 @@ void read_offsets(CmdParser *myParser){
 // ===                    MAIN PROGRAM LOOP                     ===
 // ================================================================
 
-void loop() {
-    // blink LED to indicate activity
-    blinkState = !blinkState;
-    digitalWrite(LED_PIN, blinkState);
-    delay(100);
-}
-
-void serialEvent() {
-  CmdBuffer<32> myBuffer;
-  CmdParser     myParser;
-  cmdCallback.loopCmdProcessing(&myParser, &myBuffer, &Serial);
-}
 
 void read_ypr(CmdParser *myParser){
+  int a = 300;
   // if programming failed, don't try to do anything
   if (!dmpReady) return ;
 
@@ -161,88 +192,111 @@ void read_ypr(CmdParser *myParser){
 
       while (!mpuInterrupt && fifoCount < packetSize);
 
-      // reset interrupt flag and get INT_STATUS byte
-      mpuInterrupt = false;
-      mpuIntStatus = mpu.getIntStatus();
+      do {
+          // reset interrupt flag and get INT_STATUS byte
+          mpuInterrupt = false;
+          mpuIntStatus = mpu.getIntStatus();
+    
+          // get current FIFO count
+          fifoCount = mpu.getFIFOCount();
+          if ((mpuIntStatus & 0x10) || fifoCount == 1024) {
+              // reset so we can continue cleanly
+              mpu.resetFIFO();
+              Serial.println(F("FIFO overflow!"));
+    
+              continue;
+          }
 
-      // get current FIFO count
-      fifoCount = mpu.getFIFOCount();
+          if (mpuIntStatus & 0x02) {
+            
+              
+              // wait for correct available data length, should be a VERY short wait
+              while (fifoCount < packetSize) fifoCount = mpu.getFIFOCount();
+    
+              // read a packet from FIFO
+              mpu.getFIFOBytes(fifoBuffer, packetSize);
+    
+              // track FIFO count here in case there is > 1 packet available
+              // (this lets us immediately read more without waiting for an interrupt)
+              fifoCount -= packetSize;
+    
+              mpu.dmpGetQuaternion(&q, fifoBuffer);
+              mpu.dmpGetGravity(&gravity, &q);
+              mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);              
+              a--;
 
-      // check for overflow (this should never happen unless our code is too inefficient)
-      if ((mpuIntStatus & 0x10) || fifoCount == 1024) {
-          // reset so we can continue cleanly
-          mpu.resetFIFO();
-          Serial.println(F("FIFO overflow!"));
+              if(a>200){continue;}
+              buffer_ypr[0] += ypr[0];
+              buffer_ypr[1] += ypr[1];
+              buffer_ypr[2] += ypr[2];
 
-      // otherwise, check for DMP data ready interrupt (this should happen frequently)
-      } else if (mpuIntStatus & 0x02) {
-          // wait for correct available data length, should be a VERY short wait
-          while (fifoCount < packetSize) fifoCount = mpu.getFIFOCount();
-
-          // read a packet from FIFO
-          mpu.getFIFOBytes(fifoBuffer, packetSize);
-
-          // track FIFO count here in case there is > 1 packet available
-          // (this lets us immediately read more without waiting for an interrupt)
-          fifoCount -= packetSize;
-
-          mpu.dmpGetQuaternion(&q, fifoBuffer);
-          mpu.dmpGetGravity(&gravity, &q);
-          mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
-          Serial.print("ypr\t");
-          Serial.print(ypr[0] * 180/M_PI);
-          Serial.print("\t");
-          Serial.print(ypr[1] * 180/M_PI);
-          Serial.print("\t");
-          Serial.println(ypr[2] * 180/M_PI);
-      }
+              
+          }
+          
+  
+        } while(a);
+        
+        buffer_ypr[0] /= 100;
+        buffer_ypr[1] /= 100;
+        buffer_ypr[2] /= 100;
+        
+        Serial.print("ypr\t");
+        Serial.print(buffer_ypr[0] * 180/M_PI);
+        Serial.print("\t");
+        Serial.print(buffer_ypr[1] * 180/M_PI);
+        Serial.print("\t");
+        Serial.println(buffer_ypr[2] * 180/M_PI);
 }
 
 int mean_ax,mean_ay,mean_az,mean_gx,mean_gy,mean_gz;
 void inline calibration(){
-  ax_offset=-mean_ax/8;
-  ay_offset=-mean_ay/8;
-  az_offset=(16384-mean_az)/8;
+  storage.ax_offset=-mean_ax/8;
+  storage.ay_offset=-mean_ay/8;
+  storage.az_offset=(16384-mean_az)/8;
 
-  gx_offset=-mean_gx/4;
-  gy_offset=-mean_gy/4;
-  gz_offset=-mean_gz/4;
+  storage.gx_offset=-mean_gx/4;
+  storage.gy_offset=-mean_gy/4;
+  storage.gz_offset=-mean_gz/4;
   while (1){
     int ready=0;
-    mpu.setXAccelOffset(ax_offset);
-    mpu.setYAccelOffset(ay_offset);
-    mpu.setZAccelOffset(az_offset);
+    mpu.setXAccelOffset(storage.ax_offset);
+    mpu.setYAccelOffset(storage.ay_offset);
+    mpu.setZAccelOffset(storage.az_offset);
 
-    mpu.setXGyroOffset(gx_offset);
-    mpu.setYGyroOffset(gy_offset);
-    mpu.setZGyroOffset(gz_offset);
+    mpu.setXGyroOffset(storage.gx_offset);
+    mpu.setYGyroOffset(storage.gy_offset);
+    mpu.setZGyroOffset(storage.gz_offset);
 
     meansensors();
     Serial.println("...");
 
     if (abs(mean_ax)<=acel_deadzone) ready++;
-    else ax_offset=ax_offset-mean_ax/acel_deadzone;
+    else storage.ax_offset -= mean_ax/acel_deadzone;
 
     if (abs(mean_ay)<=acel_deadzone) ready++;
-    else ay_offset=ay_offset-mean_ay/acel_deadzone;
+    else storage.ay_offset -= mean_ay/acel_deadzone;
 
     if (abs(16384-mean_az)<=acel_deadzone) ready++;
-    else az_offset=az_offset+(16384-mean_az)/acel_deadzone;
+    else storage.az_offset +=(16384-mean_az)/acel_deadzone;
 
     if (abs(mean_gx)<=giro_deadzone) ready++;
-    else gx_offset=gx_offset-mean_gx/(giro_deadzone+1);
+    else storage.gx_offset -= mean_gx/(giro_deadzone+1);
 
     if (abs(mean_gy)<=giro_deadzone) ready++;
-    else gy_offset=gy_offset-mean_gy/(giro_deadzone+1);
+    else storage.gy_offset -= mean_gy/(giro_deadzone+1);
 
     if (abs(mean_gz)<=giro_deadzone) ready++;
-    else gz_offset=gz_offset-mean_gz/(giro_deadzone+1);
+    else storage.gz_offset -= mean_gz/(giro_deadzone+1);
 
     if (ready==6) break;
   }
 }
 
 void Calibration(CmdParser *myParser) {
+    if(!mpu.testConnection()){
+      Serial.println(F("MPU connection problem"));
+      return;
+    }
 
     mpu.setXAccelOffset(0);
     mpu.setYAccelOffset(0);
@@ -266,23 +320,24 @@ void Calibration(CmdParser *myParser) {
 
 void print_offset(){
   Serial.print("Your offsets:\t");
-    Serial.print(ax_offset);
+    Serial.print(storage.ax_offset);
     Serial.print("\t");
-    Serial.print(ay_offset);
+    Serial.print(storage.ay_offset);
     Serial.print("\t");
-    Serial.print(az_offset);
+    Serial.print(storage.az_offset);
     Serial.print("\t");
-    Serial.print(gx_offset);
+    Serial.print(storage.gx_offset);
     Serial.print("\t");
-    Serial.print(gy_offset);
+    Serial.print(storage.gy_offset);
     Serial.print("\t");
-    Serial.println(gz_offset);
+    Serial.println(storage.gz_offset);
     Serial.println("\nData is printed as:\tacelX\tacelY\tacelZ\tgiroX\tgiroY\tgiroZ");
 }
 
 void meansensors(){
   int i=0;
   long buff_ax=0,buff_ay=0,buff_az=0,buff_gx=0,buff_gy=0,buff_gz=0;
+  int16_t ax, ay, az,gx, gy, gz;
 
   while (i++<(buffersize+101)){
 
