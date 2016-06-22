@@ -58,8 +58,6 @@ void setup() {
     while (!Serial);
     Serial.println(F("Device started...\n"));
     Serial.println(F("Initializing I2C devices...\n"));
-
-
     cmdCallback.addCmd("<calibration>", &Calibration);
     cmdCallback.addCmd("<mpu_initialize>", &mpu_initialize);
     cmdCallback.addCmd("<read_ypr>", &read_ypr);
